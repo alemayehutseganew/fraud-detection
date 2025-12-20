@@ -1,0 +1,142 @@
+"""
+Feature engineering for fraud detection.
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+
+class FeatureEngineer:
+    """Feature engineering for fraud detection."""
+    
+    def __init__(self):
+        """Initialize feature engineer."""
+        self.feature_stats = {}
+        
+    def create_user_behavior_features(self, df, user_col='user_id', time_col='purchase_time'):
+        """Create user behavior features."""
+        df_features = df.copy()
+        
+        # User transaction frequency
+        user_counts = df_features[user_col].value_counts()
+        df_features['user_transaction_count'] = df_features[user_col].map(user_counts)
+        
+        # Time between transactions (if multiple transactions per user)
+        if time_col in df_features.columns:
+            df_sorted = df_features.sort_values([user_col, time_col])
+            df_sorted['time_since_last_transaction'] = df_sorted.groupby(user_col)[time_col].diff().dt.total_seconds() / 3600
+            
+            # Fill NaN for first transaction of each user
+            df_sorted['time_since_last_transaction'] = df_sorted['time_since_last_transaction'].fillna(0)
+            
+            # Transaction velocity (transactions per hour)
+            df_sorted['transaction_velocity'] = 1 / (df_sorted['time_since_last_transaction'] + 0.001)  # Avoid division by zero
+            
+            df_features = df_sorted
+        
+        return df_features
+    
+    def create_device_features(self, df, device_col='device_id'):
+        """Create device-based features."""
+        df_features = df.copy()
+        
+        if device_col in df_features.columns:
+            # Number of users per device
+            device_user_counts = df_features.groupby(device_col)['user_id'].nunique()
+            df_features['device_user_count'] = df_features[device_col].map(device_user_counts)
+            
+            # Transactions per device
+            device_transaction_counts = df_features[device_col].value_counts()
+            df_features['device_transaction_count'] = df_features[device_col].map(device_transaction_counts)
+        
+        return df_features
+    
+    def create_country_features(self, df, country_col='country'):
+        """Create country-based features."""
+        df_features = df.copy()
+        
+        if country_col in df_features.columns:
+            # Fraud rate by country
+            country_fraud_rate = df_features.groupby(country_col)['class'].mean()
+            df_features['country_fraud_rate'] = df_features[country_col].map(country_fraud_rate)
+            
+            # Fill NaN for countries without fraud data
+            df_features['country_fraud_rate'] = df_features['country_fraud_rate'].fillna(0)
+            
+            # Transactions per country
+            country_transaction_counts = df_features[country_col].value_counts()
+            df_features['country_transaction_count'] = df_features[country_col].map(country_transaction_counts)
+        
+        return df_features
+    
+    def create_purchase_pattern_features(self, df):
+        """Create purchase pattern features."""
+        df_features = df.copy()
+        
+        if 'purchase_value' in df_features.columns:
+            # Purchase value bins
+            df_features['purchase_value_bin'] = pd.qcut(
+                df_features['purchase_value'], 
+                q=4, 
+                labels=['low', 'medium_low', 'medium_high', 'high']
+            )
+            
+            # Statistical features
+            df_features['purchase_value_zscore'] = (
+                df_features['purchase_value'] - df_features['purchase_value'].mean()
+            ) / df_features['purchase_value'].std()
+            
+            # Flag for high-value purchases (top 5%)
+            threshold = df_features['purchase_value'].quantile(0.95)
+            df_features['high_value_purchase'] = (df_features['purchase_value'] > threshold).astype(int)
+        
+        return df_features
+    
+    def create_time_pattern_features(self, df, time_col='purchase_time'):
+        """Create time pattern features."""
+        df_features = df.copy()
+        
+        if time_col in df_features.columns:
+            # Time of day categories
+            df_features['time_of_day'] = pd.cut(
+                df_features[time_col].dt.hour,
+                bins=[0, 6, 12, 18, 24],
+                labels=['night', 'morning', 'afternoon', 'evening'],
+                include_lowest=True
+            )
+            
+            # Weekend flag
+            df_features['is_weekend'] = df_features[time_col].dt.dayofweek.isin([5, 6]).astype(int)
+            
+            # Business hours flag (9 AM to 5 PM)
+            df_features['is_business_hours'] = (
+                (df_features[time_col].dt.hour >= 9) & 
+                (df_features[time_col].dt.hour <= 17)
+            ).astype(int)
+        
+        return df_features
+    
+    def create_all_features(self, df):
+        """Create all engineered features."""
+        df_features = df.copy()
+        
+        print("Creating user behavior features...")
+        df_features = self.create_user_behavior_features(df_features)
+        
+        print("Creating device features...")
+        df_features = self.create_device_features(df_features)
+        
+        print("Creating country features...")
+        if 'country' in df_features.columns:
+            df_features = self.create_country_features(df_features)
+        
+        print("Creating purchase pattern features...")
+        df_features = self.create_purchase_pattern_features(df_features)
+        
+        print("Creating time pattern features...")
+        df_features = self.create_time_pattern_features(df_features)
+        
+        print(f"Total features created: {len(df_features.columns)}")
+        
+        return df_features
