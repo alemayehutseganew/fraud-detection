@@ -16,29 +16,31 @@ from models import FraudDetectionModels
 from evaluate import ModelEvaluator
 
 
+@pytest.fixture
+def sample_data():
+    """Create sample data for testing."""
+    # Create imbalanced dataset
+    X, y = make_classification(
+        n_samples=1000,
+        n_features=10,
+        n_informative=8,
+        n_redundant=2,
+        n_clusters_per_class=1,
+        weights=[0.9, 0.1],  # 90% class 0, 10% class 1
+        random_state=42
+    )
+    
+    # Convert to DataFrame for realistic testing
+    feature_names = [f'feature_{i}' for i in range(X.shape[1])]
+    X_df = pd.DataFrame(X, columns=feature_names)
+    y_series = pd.Series(y, name='target')
+    
+    return X_df, y_series
+
+
 class TestFraudDetectionModels:
     """Test FraudDetectionModels class."""
     
-    @pytest.fixture
-    def sample_data(self):
-        """Create sample data for testing."""
-        # Create imbalanced dataset
-        X, y = make_classification(
-            n_samples=1000,
-            n_features=10,
-            n_informative=8,
-            n_redundant=2,
-            n_clusters_per_class=1,
-            weights=[0.9, 0.1],  # 90% class 0, 10% class 1
-            random_state=42
-        )
-        
-        # Convert to DataFrame for realistic testing
-        feature_names = [f'feature_{i}' for i in range(X.shape[1])]
-        X_df = pd.DataFrame(X, columns=feature_names)
-        y_series = pd.Series(y, name='target')
-        
-        return X_df, y_series
     
     def test_create_baseline_model(self):
         """Test baseline model creation."""

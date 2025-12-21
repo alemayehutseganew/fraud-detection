@@ -153,7 +153,7 @@ class FraudDataPreprocessor:
         return df_features
     
     def encode_categorical_features(self, df, categorical_cols):
-        """Encode categorical features."""
+        """Encode categorical features using LabelEncoder (ordinal codes)."""
         df_encoded = df.copy()
         
         for col in categorical_cols:
@@ -164,6 +164,24 @@ class FraudDataPreprocessor:
                 print(f"Encoded {col} with {len(le.classes_)} categories")
         
         return df_encoded
+
+    def one_hot_encode(self, df, categorical_cols, drop_first=False):
+        """One-hot encode specified categorical columns using pandas.get_dummies.
+
+        Args:
+            df: DataFrame to encode
+            categorical_cols: list of column names to one-hot encode
+            drop_first: whether to drop the first level to avoid multicollinearity
+        Returns:
+            DataFrame with one-hot columns appended
+        """
+        df_ohe = df.copy()
+        cols = [c for c in categorical_cols if c in df_ohe.columns]
+        if not cols:
+            return df_ohe
+        df_ohe = pd.get_dummies(df_ohe, columns=cols, prefix=cols, drop_first=drop_first)
+        print(f"One-hot encoded columns: {cols}")
+        return df_ohe
     
     def scale_numerical_features(self, df, numerical_cols, scaler_type='standard'):
         """Scale numerical features."""

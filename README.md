@@ -11,6 +11,16 @@ Adey Innovations Inc. needs accurate fraud detection models that balance:
 
 ## Dataset Description
 
+## Preprocessing & Engineered Features
+- Missing values are handled (numeric -> median imputation; categorical -> mode or 'unknown' for important fields). Duplicates are removed and timestamps are parsed.
+- **Geolocation:** IP addresses are converted to integer form and merged with the IP range-to-country map to enable country-level analysis.
+- **Time-based features:** hour_of_day, day_of_week, month, time_since_signup, same_day_purchase.
+- **Transaction frequency & velocity:** per-user transaction counts in rolling time windows (24h, 7d, 30d) and average time-between-transactions to capture velocity.
+- **Categorical encoding:** `LabelEncoder` (ordinal) is available, and `one_hot_encode` is implemented for models that require one-hot inputs.
+- **Scaling:** Numerical features can be scaled with `StandardScaler` or `MinMaxScaler`.
+- **Class imbalance:** SMOTE is applied to training folds only (synthetic minority examples) to improve decision boundaries while avoiding data leakage into validation/test sets.
+
+
 ### 1. Fraud_Data.csv (E-commerce)
 - **user_id**: Unique user identifier
 - **signup_time**: Timestamp when user signed up

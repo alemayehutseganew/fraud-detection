@@ -50,6 +50,18 @@ class TestFraudDataPreprocessor:
             'country': ['CountryA', 'CountryB']
         }
         return pd.DataFrame(data)
+
+    @pytest.fixture
+    def sample_repeated_transactions(self):
+        """Create sample fraud data with repeated transactions for same users."""
+        data = {
+            'user_id': [1, 1, 1, 2, 2],
+            'signup_time': ['2023-01-01 08:00:00'] * 5,
+            'purchase_time': ['2023-01-01 08:10:00', '2023-01-01 09:00:00', '2023-01-02 08:00:00', '2023-01-01 10:00:00', '2023-01-08 09:00:00'],
+            'purchase_value': [10, 20, 30, 40, 50],
+            'class': [0, 0, 1, 0, 1]
+        }
+        return pd.DataFrame(data)
     
     def test_clean_data(self, sample_data):
         """Test data cleaning functionality."""
@@ -100,6 +112,35 @@ class TestFraudDataPreprocessor:
         for idx, row in features_data.iterrows():
             expected_hours = (row['purchase_time'] - row['signup_time']).total_seconds() / 3600
             assert abs(row['time_since_signup'] - expected_hours) < 0.1
+
+    def test_transaction_features(self, sample_repeated_transactions):
+        """Test transaction frequency and velocity features."""
+        from feature_engineer import FeatureEngineer
+        fe = FeatureEngineer()
+        df = sample_repeated_transactions.copy()
+        df['purchase_time'] = pd.to_datetime(df['purchase_time'])
+
+        df_feat = fe.create_transaction_features(df)
+        # Check count columns
+        assert 'txn_count_24h' in df_feat.columns
+        assert 'txn_count_168h' in df_feat.columns
+        assert 'txn_count_720h' in df_feat.columns
+        # For user 1, first transaction should have count 1
+        u1_first = df_feat[(df_feat['user_id']==1)].sort_values('purchase_time').iloc[0]
+        assert u1_first['txn_count_24h'] == 1
+        # User 1 has a transaction the previous day, counts should reflect that
+        assert df_feat[(df_feat['user_id']==1)].sort_values('purchase_time').iloc[2]['txn_count_24h'] >= 1
+        # avg_time_between_txn_hours should be present
+        assert 'avg_time_between_txn_hours' in df_feat.columns
+
+    def test_one_hot_encode(self, sample_data):
+        """Test one-hot encoding of categorical columns."""
+        preprocessor = FraudDataPreprocessor()
+        df = sample_data.copy()
+        df_ohe = preprocessor.one_hot_encode(df, ['source', 'browser'])
+        # Check that some dummy columns exist
+        assert any(c.startswith('source_') for c in df_ohe.columns)
+        assert any(c.startswith('browser_') for c in df_ohe.columns)
     
     def test_merge_with_ip_data(self, sample_data, sample_ip_data):
         """Test IP data merging."""
