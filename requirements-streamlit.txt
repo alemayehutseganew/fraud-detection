@@ -1,0 +1,5 @@
+# Minimal set for running Streamlit demo
+-r requirements.txt
+
+# Streamlit runtime
+streamlit==1.26.0
