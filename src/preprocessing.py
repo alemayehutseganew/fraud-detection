@@ -206,6 +206,74 @@ class FraudDataPreprocessor:
         
         return df_scaled
 
+    def save_artifacts(self, out_dir: str = 'models'):
+        """Save scalers and encoders to disk (joblib).
+
+        Args:
+            out_dir: Directory to save artifacts into. The method will create the directory if it does not exist.
+        Returns:
+            A dict with paths to saved files.
+        """
+        import os
+        try:
+            import joblib
+        except Exception:
+            raise RuntimeError('joblib is required to save artifacts. Install via `pip install joblib`.')
+
+        os.makedirs(out_dir, exist_ok=True)
+        paths = {}
+        if self.scalers:
+            scaler_path = os.path.join(out_dir, 'scalers.pkl')
+            joblib.dump(self.scalers, scaler_path)
+            paths['scalers'] = scaler_path
+            print(f"Saved scalers to: {scaler_path}")
+        else:
+            print('No scalers found to save.')
+
+        if self.encoders:
+            encoder_path = os.path.join(out_dir, 'encoders.pkl')
+            joblib.dump(self.encoders, encoder_path)
+            paths['encoders'] = encoder_path
+            print(f"Saved encoders to: {encoder_path}")
+        else:
+            print('No encoders found to save.')
+
+        return paths
+
+    def load_artifacts(self, out_dir: str = 'models'):
+        """Load scalers and encoders from disk if present.
+
+        Args:
+            out_dir: Directory where artifacts are stored.
+        Returns:
+            A dict with loaded objects (may be empty if files missing).
+        """
+        import os
+        try:
+            import joblib
+        except Exception:
+            raise RuntimeError('joblib is required to load artifacts. Install via `pip install joblib`.')
+
+        loaded = {}
+        scaler_path = os.path.join(out_dir, 'scalers.pkl')
+        encoder_path = os.path.join(out_dir, 'encoders.pkl')
+
+        if os.path.exists(scaler_path):
+            self.scalers = joblib.load(scaler_path)
+            loaded['scalers'] = scaler_path
+            print(f"Loaded scalers from: {scaler_path}")
+        else:
+            print('No scaler artifact found at:', scaler_path)
+
+        if os.path.exists(encoder_path):
+            self.encoders = joblib.load(encoder_path)
+            loaded['encoders'] = encoder_path
+            print(f"Loaded encoders from: {encoder_path}")
+        else:
+            print('No encoder artifact found at:', encoder_path)
+
+        return loaded
+
 
 class CreditCardPreprocessor:
     """Preprocess credit card fraud data."""

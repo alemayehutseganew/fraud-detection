@@ -1,0 +1,27 @@
+[
+  {
+    "feature": "time_since_signup",
+    "importance": 0.039343729584562726,
+    "recommendation": "Implement additional verification for transactions within 2 hours of account creation."
+  },
+  {
+    "feature": "same_day_purchase",
+    "importance": 0.02398888463394356,
+    "recommendation": "Require additional verification for same-day purchases."
+  },
+  {
+    "feature": "month",
+    "importance": 0.01520011228834037,
+    "recommendation": "Monitor transactions where 'month' has extreme values, as it decreases fraud probability."
+  },
+  {
+    "feature": "purchase_month",
+    "importance": 0.013162703549276239,
+    "recommendation": "Monitor transactions where 'purchase_month' has extreme values, as it decreases fraud probability."
+  },
+  {
+    "feature": "purchase_day",
+    "importance": 0.005531062805104097,
+    "recommendation": "Monitor transactions where 'purchase_day' has extreme values, as it decreases fraud probability."
+  }
+]
