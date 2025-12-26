@@ -47,23 +47,41 @@ This section summarizes EDA, feature engineering, preprocessing, and early model
 
 Purpose: identify countries with elevated fraud rates to inform rules, routing, or manual review prioritization.
 
-Method (reproducible snippet):
+Method (reproducible snippet): The bar chart is generated from `reports/figures/country_fraud_rates.csv` and saved as `reports/figures/fraud_by_country.png` (code in notebooks and `scripts/`).
 
-Code to reproduce this country-level analysis and the bar chart is available in the notebooks and `scripts/`; the resulting figure is saved as `reports/figures/fraud_by_country.png`.
-
-Figure 2 (recommended): "Top 20 Countries by Fraud Rate".
+Figure 2 — Top 20 Countries by Fraud Rate
 
 ![](figures/fraud_by_country.png)
 
+
+Top 10 countries by fraud rate (from `reports/figures/country_fraud_rates.csv`)
+
+| Country | Total tx | Frauds | Fraud rate |
+|---|---:|---:|---:|
+| Turkmenistan | 1 | 1 | 100.00% |
+| Namibia | 23 | 10 | 43.48% |
+| Sri Lanka | 31 | 13 | 41.94% |
+| Luxembourg | 72 | 28 | 38.89% |
+| Virgin Islands (U.S.) | 3 | 1 | 33.33% |
+| Ecuador | 106 | 28 | 26.42% |
+| Tunisia | 118 | 31 | 26.27% |
+| Peru | 119 | 31 | 26.05% |
+| Bolivia | 53 | 13 | 24.53% |
+| Kuwait | 90 | 21 | 23.33% |
+
+**Note:** several highest fraud rates come from small sample sizes; use both fraud rate and absolute fraud counts when prioritizing operational action (prefer countries with both high fraud counts and high rates).
+
 2.5 SMOTE and class distribution after resampling
 
-We used SMOTE to address extreme imbalance before model training. Earlier work showed only the original distribution; below is code to reproduce and save the after-resampling distribution.
+We used SMOTE to address extreme imbalance before model training. The SMOTE resampling was applied to training data only to increase minority-class representation for learning; all evaluation metrics are reported on holdout data with the original (imbalanced) distribution.
 
-Code to reproduce the SMOTE resampling and class-distribution visual is available in the notebooks and `scripts/`; the resulting figures are saved under `reports/figures/` (for example, `class_distribution_before_after.png`). SMOTE visuals have been generated in this environment and saved to `reports/figures/class_distribution_before_after.png` and `reports/figures/class_distribution_after_smote.png`.
+Code to reproduce the SMOTE resampling and class-distribution visual is available in the notebooks and `scripts/`; the resulting figures are saved under `reports/figures/` (for example, `class_distribution_before_after.png` and `class_distribution_after_smote.png`).
 
-Figure 1: Class distribution before/after SMOTE.
+Figure 1 — Class distribution before/after SMOTE
 
 ![](figures/class_distribution_before_after.png)
+
+**Interpretation:** SMOTE increases minority-class samples in the training set (visualized above), which helps the model learn minority patterns. Remember to evaluate on the original holdout distribution and tune decision thresholds using business-weighted metrics to avoid inflated performance estimates.
 
 2.6 Feature justification table
 
@@ -84,12 +102,24 @@ Refer to `notebooks/feature-engineering.ipynb` for the implementation details an
 - Candidate models: Gradient Boosted Trees (XGBoost/LightGBM), Random Forest, Logistic Regression (regularized), and a lightweight neural net baseline.
 - Primary evaluation metrics used: precision, recall, F1, AUC-ROC, and AUC-PR. For business decisions we prioritize recall at an acceptable precision cutoff and cost-weighted metrics.
 
+3.1.1 Current results (quick summary)
+We report tuning summaries and a short interpretation of current model results (metrics derived from `models/tuning_summary.json`).
+
+| Model | Best tuning metric (average precision - AP) |
+|---|---:|
+| Model | Best tuning metric (average precision - AP) |
+|---|---:|
+| Random Forest | 0.63022946 |
+| XGBoost | **0.63114138** — top candidate
+
+Interpretation: XGBoost currently achieves the best average precision (AP ≈ 0.631) on tuning runs; this is our leading candidate for further Optuna-based tuning and final selection. The AP value reflects precision-recall trade-offs suitable for the imbalanced fraud detection task and will be used alongside recall-at-precision thresholds for business decisions.
+
 3.2 Explainability
 - SHAP-based explainability was used to interpret model decisions and produce per-sample force plots for manual-review cases. See the generated explainability report: [reports/SHAP_explainability.md](reports/SHAP_explainability.md) and saved SHAP force visuals in `reports/`.
 
 Figure 3 (recommended): SHAP summary plot (global feature importance and directionality).
 
-![](shap_summary.png)
+![](figures/shap_summary.png)
 
 ---
 
@@ -133,10 +163,10 @@ Figures list and where referred to in the narrative:
 
 - Figure 1 — Class distribution before/after SMOTE: `reports/figures/class_distribution_before_after.png` (referenced in Section 2.5)
 - Figure 2 — Top 20 Countries by Fraud Rate: `reports/figures/fraud_by_country.png` (referenced in Section 2.4)
-- Figure 3 — SHAP summary (global): `reports/figures/shap_summary.png` (referenced in Section 3.2)
-- Figure 4 — Feature importance (model-based): `feature_importance_top10.png` (referenced in Section 3.1)
+- Figure 3 — SHAP summary (global): `reports/shap_summary.png` (referenced in Section 3.2)
+- Figure 4 — Feature importance (model-based): `reports/feature_importance_top10.png` (referenced in Section 3.1)
 
-![](feature_importance_top10.png)
+![](figures/feature_importance_top10.png)
 
 Inline references: each figure above is referenced in its relevant section and captioned with a short interpretation of the insight (for example, Section 2.4 references Figure 2 to discuss country-level risk differentiation).
 
@@ -150,8 +180,8 @@ Below are explicit references to the key visuals and two concise tables that sum
 
 - Figure 1 (`reports/figures/class_distribution_before_after.png`): referenced in Section 2.5 when discussing SMOTE and class balance; demonstrates pre/post resampling class counts and justifies resampling decisions.
 - Figure 2 (`reports/figures/fraud_by_country.png`): referenced in Section 2.4 for country-level risk; used to recommend geo-based thresholds and manual-review prioritization.
-- Figure 3 (`reports/figures/shap_summary.png`): referenced in Section 3.2 for global feature importance and directionality; used to explain top drivers of predicted risk.
-- Figure 4 (`reports/figures/feature_importance.png`): referenced in Section 3.1 for model-driven importance and to cross-check against SHAP.
+- Figure 3 (`reports/shap_summary.png`): referenced in Section 3.2 for global feature importance and directionality; used to explain top drivers of predicted risk.
+- Figure 4 (`reports/feature_importance_top10.png`): referenced in Section 3.1 for model-driven importance and to cross-check against SHAP.
 
 **Key Findings (summary table)**
 

@@ -2,24 +2,51 @@
 Model explainability using SHAP.
 """
 
-import shap
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except Exception:
+    shap = None
+    SHAP_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+try:
+    import matplotlib.pyplot as plt
+    MPL_AVAILABLE = True
+except Exception:
+    plt = None
+    MPL_AVAILABLE = False
+try:
+    import seaborn as sns
+    SEABORN_AVAILABLE = True
+except Exception:
+    sns = None
+    SEABORN_AVAILABLE = False
+
 import warnings
 warnings.filterwarnings('ignore')
 
 
-class SHAPExplainer:
-    """SHAP explainability for fraud detection models."""
-    
-    def __init__(self, model, feature_names):
-        """Initialize SHAP explainer."""
-        self.model = model
-        self.feature_names = feature_names
-        self.explainer = None
-        self.shap_values = None
+if not SHAP_AVAILABLE:
+    class SHAPExplainer:
+        """Fallback SHAPExplainer when shap is not available.
+
+        Instantiating this class raises an informative ImportError so the
+        calling code can catch and provide a helpful message in the UI.
+        """
+        def __init__(self, *args, **kwargs):
+            raise ImportError("shap is not installed. Install 'shap' to enable SHAP explainability features.")
+else:
+    class SHAPExplainer:
+        """SHAP explainability for fraud detection models."""
+        
+        def __init__(self, model, feature_names):
+            """Initialize SHAP explainer."""
+            self.model = model
+            self.feature_names = feature_names
+            self.explainer = None
+            self.shap_values = None
         
     def create_explainer(self, X_train, explainer_type='tree'):
         """Create SHAP explainer."""

@@ -6,9 +6,26 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import shap
-import matplotlib.pyplot as plt
-import seaborn as sns
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except Exception:
+    shap = None
+    SHAP_AVAILABLE = False
+
+try:
+    import matplotlib.pyplot as plt
+    MPL_AVAILABLE = True
+except Exception:
+    plt = None
+    MPL_AVAILABLE = False
+
+try:
+    import seaborn as sns
+    SEABORN_AVAILABLE = True
+except Exception:
+    sns = None
+    SEABORN_AVAILABLE = False
 from pathlib import Path
 import sys
 import warnings
@@ -22,6 +39,74 @@ from preprocessing import FraudDataPreprocessor
 from feature_engineer import FeatureEngineer
 from explain import SHAPExplainer
 
+# Compatibility helper: when unpickling models trained with newer scikit-learn
+# versions we may encounter estimators with missing attributes (e.g. 'multi_class')
+# which cause AttributeError during prediction. Patch common estimators in-place
+# to add sensible defaults to maintain backward compatibility.
+def _ensure_multi_class_attr(estimator):
+    try:
+        from sklearn.linear_model import LogisticRegression
+    except Exception:
+        return
+
+    if isinstance(estimator, LogisticRegression) and not hasattr(estimator, 'multi_class'):
+        # Default to 'ovr' which matches historical default behaviour
+        try:
+            estimator.multi_class = 'ovr'
+            print("Patched LogisticRegression: set missing 'multi_class' -> 'ovr'")
+        except Exception:
+            pass
+
+
+def _patch_model_compatibility(m):
+    """Recursively walk common sklearn containers (Pipeline, ColumnTransformer)
+    and patch estimators that are missing attributes required by older
+    scikit-learn runtimes."""
+    try:
+        from sklearn.pipeline import Pipeline
+        from sklearn.compose import ColumnTransformer
+    except Exception:
+        Pipeline = None
+        ColumnTransformer = None
+
+    # Pipeline
+    if Pipeline is not None and isinstance(m, Pipeline):
+        for name, step in m.named_steps.items():
+            _patch_model_compatibility(step)
+        return
+
+    # ColumnTransformer
+    if ColumnTransformer is not None and hasattr(m, 'transformers'):
+        try:
+            for name, trans, cols in m.transformers:
+                if trans in ('drop', 'passthrough'):
+                    continue
+                _patch_model_compatibility(trans)
+        except Exception:
+            # Fallback for implementations exposing 'transformers_' instead
+            try:
+                for _, trans in getattr(m, 'transformers_', []):
+                    if trans in ('drop', 'passthrough'):
+                        continue
+                    _patch_model_compatibility(trans)
+            except Exception:
+                pass
+        return
+
+    # Estimator-level patch
+    try:
+        _ensure_multi_class_attr(m)
+    except Exception:
+        pass
+
+    # If ensemble/stacking contains sub-estimators, recurse
+    try:
+        if hasattr(m, 'estimators_'):
+            for sub in getattr(m, 'estimators_', []):
+                _patch_model_compatibility(sub)
+    except Exception:
+        pass
+
 # Page config
 st.set_page_config(
     page_title="Fraud Detection System",
@@ -32,11 +117,36 @@ st.set_page_config(
 # Load models and data
 @st.cache_resource
 def load_model():
-    """Load the best trained model."""
+    """Load the best trained model or create a small demo model if unavailable."""
     try:
         model_path = Path('models/best_model_pipeline.pkl')
-        model = joblib.load(model_path)
-        return model
+        if model_path.exists():
+            model = joblib.load(model_path)
+            # Patch for compatibility issues
+            _patch_model_compatibility(model)
+            return model
+        else:
+            st.warning("No saved model artifact found at models/best_model_pipeline.pkl — creating a small demo model for UI demos.")
+            # Create a tiny demo model that scores by purchase_value
+            from sklearn.linear_model import LogisticRegression
+            import numpy as np
+            clf = LogisticRegression()
+            X = np.array([[10.],[100.],[20.],[200.],[5.],[80.],[30.]])
+            y = np.array([0,1,0,1,0,1,0])
+            clf.fit(X, y)
+            # Wrap to accept DataFrame-like inputs
+            class SimpleWrapper:
+                def __init__(self, clf):
+                    self.clf = clf
+                def predict(self, X):
+                    rows = X.to_dict(orient='records') if hasattr(X, 'to_dict') else list(X)
+                    arr = [[float(r.get('purchase_value', 0))] for r in rows]
+                    return self.clf.predict(arr)
+                def predict_proba(self, X):
+                    rows = X.to_dict(orient='records') if hasattr(X, 'to_dict') else list(X)
+                    arr = [[float(r.get('purchase_value', 0))] for r in rows]
+                    return self.clf.predict_proba(arr)
+            return SimpleWrapper(clf)
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None
@@ -64,6 +174,8 @@ def load_sample_data():
         # Clean and engineer features
         fraud_clean = preprocessor.clean_data(fraud_data)
         fraud_features = feature_engineer.create_all_features(fraud_clean)
+        # Also create time features
+        fraud_features = preprocessor.create_time_features(fraud_features)
 
         # Get a sample of legitimate and fraudulent transactions
         legit_sample = fraud_features[fraud_features['class'] == 0].sample(5, random_state=42)
@@ -94,8 +206,14 @@ def main():
     st.sidebar.header("Navigation")
     page = st.sidebar.radio("Choose a page:", ["Home", "Fraud Prediction", "Model Insights", "About"])
 
-    # Load resources
-    model = load_model()
+    # Prediction mode (Local model vs Backend API)
+    prediction_mode = st.sidebar.selectbox("Prediction mode", ["Local model", "Backend API"])
+    api_url = None
+    if prediction_mode == "Backend API":
+        api_url = st.sidebar.text_input("API URL", value="http://localhost:8000/predict")
+
+    # Load resources (only load local model when using local mode)
+    model = load_model() if prediction_mode == "Local model" else None
     scalers = load_scalers()
     sample_data = load_sample_data()
     recommendations = load_shap_recommendations()
@@ -104,7 +222,7 @@ def main():
         show_home_page(recommendations)
 
     elif page == "Fraud Prediction":
-        show_prediction_page(model, scalers, sample_data)
+        show_prediction_page(model, scalers, sample_data, prediction_mode=prediction_mode, api_url=api_url)
 
     elif page == "Model Insights":
         show_insights_page()
@@ -146,10 +264,22 @@ def show_home_page(recommendations):
     4. Explore **Model Insights** for detailed analytics
     """)
 
-def show_prediction_page(model, scalers, sample_data):
+def call_api_predict(api_url, features, timeout=5):
+    """Call backend API /predict with a single instance payload and return parsed JSON."""
+    import requests
+    try:
+        resp = requests.post(api_url, json={"instance": features}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        raise
+
+
+def show_prediction_page(model, scalers, sample_data, prediction_mode="Local model", api_url=None):
     st.header("Fraud Prediction")
 
-    if model is None:
+    # If using local model, ensure it's available
+    if prediction_mode == "Local model" and model is None:
         st.error("Model not loaded. Please check model files.")
         return
 
@@ -197,7 +327,11 @@ def show_prediction_page(model, scalers, sample_data):
             'txn_count_168h': txn_count_24h * 7,  # Approximate
             'txn_count_720h': txn_count_24h * 30,  # Approximate
             'avg_time_between_txn_hours': time_since_signup / max(txn_count_24h, 1),
-            'purchase_value_log': np.log1p(purchase_value)
+            'purchase_value_log': np.log1p(purchase_value),
+            'purchase_hour': hour_of_day,
+            'purchase_dayofweek': day_of_week,
+            'purchase_month': month,
+            'purchase_day': 15  # Default day of month
         }
 
     else:
@@ -241,27 +375,34 @@ def show_prediction_page(model, scalers, sample_data):
     if st.button("🔍 Analyze Transaction", type="primary"):
         with st.spinner("Analyzing transaction..."):
             try:
-                # Prepare features for model
-                feature_df = pd.DataFrame([features])
+                if prediction_mode == "Backend API":
+                    if not api_url:
+                        st.error("API URL not set. Please set the API URL in the sidebar.")
+                        return
+                    try:
+                        resp = call_api_predict(api_url, features)
+                    except Exception as e:
+                        st.error(f"API request failed: {e}")
+                        return
 
-                # Encode categorical features
-                feature_df['source_encoded'] = feature_df['source'].astype('category').cat.codes
-                feature_df['browser_encoded'] = feature_df['browser'].astype('category').cat.codes
-                feature_df['sex_encoded'] = feature_df['sex'].map({'M': 1, 'F': 0})
+                    preds = resp.get("predictions")
+                    probs = resp.get("probabilities")
 
-                # Select model features (exclude original categorical)
-                model_features = [
-                    'purchase_value', 'age', 'hour_of_day', 'day_of_week', 'month',
-                    'time_since_signup', 'same_day_purchase', 'purchase_value_log',
-                    'txn_count_24h', 'txn_count_168h', 'txn_count_720h',
-                    'avg_time_between_txn_hours', 'source_encoded', 'browser_encoded', 'sex_encoded'
-                ]
+                    if preds is None:
+                        st.error(f"Invalid response from API: {resp}")
+                        return
 
-                X = feature_df[model_features]
+                    pred_label = preds[0] if len(preds) > 0 else None
+                    fraud_proba = probs[0] if probs and len(probs) > 0 else (1.0 if pred_label == 1 else 0.0)
+                    prediction = "Fraudulent" if fraud_proba > 0.5 else "Legitimate"
 
-                # Make prediction
-                fraud_proba = model.predict_proba(X)[0][1]
-                prediction = "Fraudulent" if fraud_proba > 0.5 else "Legitimate"
+                else:
+                    # Prepare features for model
+                    feature_df = pd.DataFrame([features])
+
+                    # Make prediction using the pipeline
+                    fraud_proba = model.predict_proba(feature_df)[0][1]
+                    prediction = "Fraudulent" if fraud_proba > 0.5 else "Legitimate"
 
                 # Display results
                 st.header("🎯 Prediction Results")
@@ -338,6 +479,16 @@ def show_insights_page():
         st.dataframe(country_df.head(10))
     except:
         st.info("Country fraud data not available.")
+
+    st.subheader("🔍 SHAP Explanations")
+    if not SHAP_AVAILABLE:
+        st.info("SHAP is not installed in this environment. Install `shap` to enable explainability features.")
+    else:
+        try:
+            st.markdown("SHAP explanation files are available in the reports folder.")
+            st.info("View detailed SHAP explanations in the reports/shap_force_*.html files.")
+        except Exception:
+            st.info("SHAP explanation files not available.")
 
 def show_about_page():
     st.header("About This System")

@@ -30,3 +30,6 @@ pytest-cov==4.1.0
 # Additional
 category-encoders==2.6.2
 ipython==8.15.0
+
+# App / Deployment
+streamlit==1.26.0
